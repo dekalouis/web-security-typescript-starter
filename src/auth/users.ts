@@ -21,7 +21,8 @@ export type User = {
 };
 
 export function normalizeEmail(email: string): string {
-  return email;
+  const cleanEmail = email.trim().toLowerCase();
+  return cleanEmail;
 }
 
 export async function createUser(
@@ -65,9 +66,9 @@ export function findUserByEmail(
     )
     .get(email) as
     | (Omit<User, "has_totp" | "has_pending_totp"> & {
-        has_totp: number;
-        has_pending_totp: number;
-      })
+      has_totp: number;
+      has_pending_totp: number;
+    })
     | undefined;
   return mapUser(row);
 }
@@ -86,9 +87,9 @@ export function findUserById(db: DatabaseSync, id: number): User | undefined {
     )
     .get(id) as
     | (Omit<User, "has_totp" | "has_pending_totp"> & {
-        has_totp: number;
-        has_pending_totp: number;
-      })
+      has_totp: number;
+      has_pending_totp: number;
+    })
     | undefined;
   return mapUser(row);
 }
@@ -208,16 +209,16 @@ function getDecryptedTotpSecret(
 function mapUser(
   row:
     | (Omit<User, "has_totp" | "has_pending_totp"> & {
-        has_totp: number;
-        has_pending_totp: number;
-      })
+      has_totp: number;
+      has_pending_totp: number;
+    })
     | undefined,
 ): User | undefined {
   return row
     ? {
-        ...row,
-        has_totp: Boolean(row.has_totp),
-        has_pending_totp: Boolean(row.has_pending_totp),
-      }
+      ...row,
+      has_totp: Boolean(row.has_totp),
+      has_pending_totp: Boolean(row.has_pending_totp),
+    }
     : undefined;
 }

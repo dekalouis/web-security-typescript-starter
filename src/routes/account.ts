@@ -51,6 +51,13 @@ export function createAccountRouter(deps: Dependencies): Router {
 
   router.get("/account", (req, res) => {
     const current = requireAuth(db, req, res);
+    if (current) {
+      logEvent("account_accessed", {
+        userId: current.user.id,
+        email: current.user.email,
+        expiresAt: current.session.expires_at,
+      })
+    }
     if (!current) return;
     res.type("html").send(renderAccountPage(current));
   });
