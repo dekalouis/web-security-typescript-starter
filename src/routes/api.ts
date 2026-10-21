@@ -32,7 +32,7 @@ export function createApiRouter(deps: Dependencies): Router {
     }
 
     const orderId = Number(req.params.id);
-    if (!Number.isSafeInteger(orderId)) {
+    if (!Number.isSafeInteger(orderId) || current.user.id !== orderId) {
       res.status(404).json({ error: "Order not found" });
       return;
     }
