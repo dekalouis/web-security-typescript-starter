@@ -22,6 +22,7 @@ import {
   findOrderById,
   InsufficientInventoryError,
 } from "../orders/index.ts";
+import { csrfTokensMatch } from "../csrf.ts";
 
 export function sendFulfillmentTimeout(
   response: Response,
@@ -78,6 +79,16 @@ export function createCheckoutRouter(deps: Dependencies): Router {
   router.post("/checkout", async (req, res) => {
     const current = requireAuth(db, req, res);
     if (!current) {
+      return;
+    }
+
+    if (!csrfTokensMatch(current.session.csrf_token, req.body?.csrfToken)) {
+      sendErrorPage(
+        res,
+        403,
+        "Forbidden",
+        "Your request could not be verified.",
+      );
       return;
     }
 
@@ -196,7 +207,7 @@ export function createCheckoutRouter(deps: Dependencies): Router {
       return;
     }
 
-    const pawPalReference = createPawPalReference(order.id, order.total_cents);
+    const pawPalReference = createPawPalReference(order.id, order.total_cents, deps.pawPalApiKey);
 
     logEvent("checkout_started", {
       userId: current.user.id,

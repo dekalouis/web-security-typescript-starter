@@ -8,5 +8,7 @@ data/uploads/*
 !data/uploads/mystery-shack-tax-exemption.pdf
 data/bulk-tax-documents/
 .env
+.env.*
 .env.local
 .env.*.local
+!.env.example

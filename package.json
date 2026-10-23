@@ -6,13 +6,14 @@
   "type": "module",
   "scripts": {
     "attacker-lab": "node scripts/attacker-lab.mjs",
-    "db:reset": "node src/db/seed.ts",
-    "dev": "node --watch src/main.ts",
+    "db:reset": "node --env-file-if-exists=.env src/db/seed.ts", 
+    "dev": "node --watch --env-file-if-exists=.env src/main.ts",
     "format": "oxfmt",
     "lint": "oxfmt --check && oxlint",
     "lint:fix": "npm run format && oxlint --fix",
-    "start": "node src/main.ts",
-    "typecheck": "tsc"
+    "start": "node --env-file-if-exists=.env src/main.ts",
+    "typecheck": "tsc",
+    "audit:security": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",

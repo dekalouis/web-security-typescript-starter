@@ -15,6 +15,8 @@ export type Dependencies = {
   downloadSigningKey: Buffer;
   keyring: Keyring | undefined;
   db: DatabaseSync;
+  pawPalApiKey: string;
+  trustedProxyHops: number;
 };
 
 function parseNonNegativeInteger(value: string, name: string): number {
@@ -42,6 +44,12 @@ export function initDependencies(
     throw new Error("ACORN_FULFILLMENT_DELAY_MS must be a non-negative number");
   }
 
+  const signingKey = requireEnv("DOWNLOAD_SIGNING_KEY");
+  if (typeof signingKey !== "string" || !/^[a-fA-F0-9]{64}$/.test(signingKey)) {
+    throw new Error("DOWNLOAD_SIGNING_KEY must be exactly 64 hexadecimal characters");
+  }
+  const signingKeyBuffer = Buffer.from(signingKey, "hex");
+
   const values = {
     appOrigin: new URL(env.APP_ORIGIN ?? "http://localhost:3000").origin,
     port,
@@ -50,9 +58,22 @@ export function initDependencies(
     maxRequestBodyBytes: 32 * 1024,
     maxUploadBytes: 1024 * 1024,
     maxPublicProductResults: 50,
-    downloadSigningKey: randomBytes(32),
+    downloadSigningKey: signingKeyBuffer,
     keyring: loadOptionalKeyring(env),
+    pawPalApiKey: requireEnv("PAWPAL_API_KEY"),
+    trustedProxyHops: parseNonNegativeInteger(
+      env.TRUST_PROXY_HOPS ?? "0",
+      "TRUST_PROXY_HOPS",
+    ),
   };
 
   return { ...values, db: openDatabase(values.databasePath) };
+}
+
+export function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
 }

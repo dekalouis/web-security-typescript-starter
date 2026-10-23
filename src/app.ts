@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
-import express, { type RequestHandler } from "express";
+import cors from "cors";
+import express, { type Response } from "express";
+import helmet from "helmet";
 import { validateRequestOrigin } from "./csrf.ts";
 import type { Dependencies } from "./dependencies.ts";
 import { errorHandler, sendErrorPage } from "./errors.ts";
@@ -21,43 +23,43 @@ import { createStorefrontRouter } from "./routes/storefront.ts";
 import { createSupportRouter } from "./routes/support.ts";
 import { migrateSensitiveDataAtRest } from "./storage/migrations.ts";
 
-const apiCors: RequestHandler = (req, res, next) => {
-  const origin = req.header("Origin");
-
-  if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  }
-
-  res.setHeader("Vary", "Origin");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
-    res.sendStatus(204);
-    return;
-  }
-
-  next();
-};
-
 export function createApp(deps: Dependencies): express.Express {
   migrateSensitiveDataAtRest(deps.db, deps.keyring);
   const app = express();
 
+  app.set("trust proxy", deps.trustedProxyHops);
+
   app.use((_req, res, next) => {
     const cspNonce = randomBytes(16).toString("base64");
     res.locals.cspNonce = cspNonce;
-    res.set("X-Content-Type-Options", "nosniff");
     next();
   });
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          "script-src": ["'self'", (_req, res) =>
+            `'nonce-${String((res as Response).locals.cspNonce)}'`],
+          "style-src": ["'self'"],
+          "frameSrc": ["'self'"],
+          "upgradeInsecureRequests": null,
+        },
+      },
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+      xFrameOptions: { action: "sameorigin" },
+      strictTransportSecurity: false,
+    })
+  );
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, app: "bearly-secure" });
   });
+  app.use(["/shipping-widget.css", "/shipping-widget.js"], (_req, res, next) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    next();
+  })
+
   app.use(express.static("public"));
   app.use(
     "/vendor/simplewebauthn",
@@ -68,7 +70,16 @@ export function createApp(deps: Dependencies): express.Express {
   app.use(express.json());
   app.use(createPawPalRouter(deps));
   app.use(validateRequestOrigin(deps.appOrigin));
-  app.use("/api", apiCors);
+  app.use(
+    "/api/products",
+    cors({
+      origin: "*",
+      credentials: false,
+      methods: ["GET"],
+      allowedHeaders: [],
+    }),
+  )
+  // app.use("/api");
   app.use(createApiRouter(deps));
 
   app.use(createArchiveRouter(deps));
