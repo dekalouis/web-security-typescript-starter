@@ -9,9 +9,11 @@ import {
   type Order,
   type OrderItem,
 } from "../orders/index.ts";
-import { listProducts, type Product } from "../products.ts";
+import { listPublicProducts, type Product } from "../products.ts";
 import { findApiKey } from "../auth/apiKeys.ts";
 import { createRateLimiter } from "../security/rateLimit.ts";
+import { consumeApiKeyQuota } from "../auth/apiKeyUsage.ts";
+import { sendApiKeyQuotaExhausted, setApiKeyQuotaHeaders, toApiKeyQuotaResponse } from "./apiKeyQuota.ts";
 // import { it } from "node:test";
 
 type ProductResponse = {
@@ -109,7 +111,7 @@ export function createApiRouter(deps: Dependencies): Router {
   });
 
   router.get("/api/products", productRateLimiter, (_req, res) => {
-    const products = listProducts(db).map(toProductResponse);
+    const products = listPublicProducts(db, deps.maxPublicProductResults).map(toProductResponse);
     res.json({ products });
   });
 
@@ -125,6 +127,13 @@ export function createApiRouter(deps: Dependencies): Router {
       return;
     }
 
+    const quota = consumeApiKeyQuota(db, apiKey.id);
+    if (!quota.allowed) {
+      sendApiKeyQuotaExhausted(res, quota);
+      return;
+    }
+    setApiKeyQuotaHeaders(res, quota);
+
     const orders = listAllOrders(db).map((order) => ({
       id: order.id,
       status: order.status,
@@ -135,6 +144,7 @@ export function createApiRouter(deps: Dependencies): Router {
     res.json({
       integration: "Warehouse Fulfillment Integration",
       orders,
+      quota: toApiKeyQuotaResponse(quota),
     });
   });
 

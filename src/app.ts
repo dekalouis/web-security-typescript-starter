@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import cors from "cors";
 import express, { type Response } from "express";
 import helmet from "helmet";
@@ -23,12 +23,15 @@ import { createStorefrontRouter } from "./routes/storefront.ts";
 import { createSupportRouter } from "./routes/support.ts";
 import { migrateSensitiveDataAtRest } from "./storage/migrations.ts";
 import { createRateLimiter } from "./security/rateLimit.ts";
+import { createLoadShedder } from "./security/loadShedding.ts";
+import { assignRequestId } from "./observability/requestId.ts";
 
 export function createApp(deps: Dependencies): express.Express {
   migrateSensitiveDataAtRest(deps.db, deps.keyring);
   const app = express();
 
   app.set("trust proxy", deps.trustedProxyHops);
+  app.use(assignRequestId);
 
   app.use((_req, res, next) => {
     const cspNonce = randomBytes(16).toString("base64");
@@ -57,6 +60,22 @@ export function createApp(deps: Dependencies): express.Express {
     res.json({ ok: true, app: "bearly-secure" });
   });
 
+  app.get("/.well-known/security.txt", (_req, res) => {
+    const expiresAt = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
+    res.type("text/plain").send(
+      `Contact: mailto:security@bearlysecure.example
+Policy: https://bearlysecure.example/security-policy
+Expires: ${expiresAt}
+`
+    );
+  });
+
+  const loadShedder = createLoadShedder({
+    maxConcurrent: 50,
+    retryAfterSeconds: 1,
+  });
+  app.use(loadShedder);
+
   app.use(
     createRateLimiter({
       windowSeconds: 60,
@@ -75,8 +94,8 @@ export function createApp(deps: Dependencies): express.Express {
     express.static("node_modules/@simplewebauthn/browser/dist/bundle"),
   );
 
-  app.use(express.urlencoded({ extended: false }));
-  app.use(express.json());
+  app.use(express.urlencoded({ extended: false, limit: deps.maxRequestBodyBytes }));
+  app.use(express.json({ limit: deps.maxRequestBodyBytes }));
   app.use(createPawPalRouter(deps));
   app.use(validateRequestOrigin(deps.appOrigin));
   app.use(

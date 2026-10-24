@@ -48,7 +48,7 @@ import { verifyPassword } from "../auth/passwords.ts";
 export function createAccountRouter(deps: Dependencies): Router {
   const { db, keyring } = deps;
   const router = Router();
-  const uploadTaxDocument = createUploadMiddleware("document");
+  const uploadTaxDocument = createUploadMiddleware(deps.maxUploadBytes, "document");
 
   router.get("/account", (req, res) => {
     const current = requireAuth(db, req, res);

@@ -53,7 +53,9 @@ import {
   renderTotpLoginPage as renderTotpLoginView,
 } from "../views/auth.ts";
 import { logEvent } from "../logger.ts";
-import { createRateLimiter, canonicalEmailKey } from "../security/rateLimit.ts";
+import { createRateLimiter, canonicalEmailKey, clientIpKey } from "../security/rateLimit.ts";
+import { protectSignupFromBots } from "../security/botRisk.ts";
+import { createAuthAlertThreshold } from "../observability/authAlerts.ts";
 
 type AuthenticationLogFields = {
   success: boolean;
@@ -62,12 +64,18 @@ type AuthenticationLogFields = {
 };
 
 function logAuthenticationEvent(
-  _req: Request,
-  _res: Response,
+  req: Request,
+  res: Response,
   eventName: "login_attempt" | "password_reset_request",
   fields: AuthenticationLogFields,
 ): void {
-  logEvent(eventName, fields);
+  logEvent(eventName, {
+    ...fields,
+    requestId: res.locals.requestId,
+    sourceIp: clientIpKey(req),
+    userId: fields.userId ?? null,
+    outcome: fields.success ? "success" : "failure",
+  });
 }
 
 export function createAuthRouter(deps: Dependencies): Router {
@@ -78,6 +86,16 @@ export function createAuthRouter(deps: Dependencies): Router {
   const VERIFICATION_RESTART_MESSAGE =
     "That verification attempt is no longer valid. Log in again.";
 
+  const recordFailedLogin = createAuthAlertThreshold({
+    signal: "failed_logins",
+    threshold: 3,
+    windowSeconds: 5 * 60,
+  });
+  const recordPasswordResetRequest = createAuthAlertThreshold({
+    signal: "password_reset_requests",
+    threshold: 3,
+    windowSeconds: 10 * 60,
+  });
   const loginRateLimiter = createRateLimiter({
     windowSeconds: 15 * 60,
     max: 20,
@@ -246,6 +264,7 @@ export function createAuthRouter(deps: Dependencies): Router {
         failureReason: !user ? "email not found" : "password mismatch",
         returnTo,
       });
+      recordFailedLogin(req, res.locals.requestId, user?.id ?? null);
       res
         .status(401)
         .type("html")
@@ -328,6 +347,7 @@ export function createAuthRouter(deps: Dependencies): Router {
         failureReason: "totp code mismatch",
         returnTo: challenge.return_to,
       });
+      recordFailedLogin(req, res.locals.requestId, user.id);
       if (challengeExhausted) {
         clearTotpLoginChallengeCookie(res);
         res.redirect(verificationRestartLoginPath(challenge.return_to));
@@ -363,7 +383,7 @@ export function createAuthRouter(deps: Dependencies): Router {
     res.redirect(challenge.return_to);
   });
 
-  router.post("/signup", async (req, res) => {
+  router.post("/signup", protectSignupFromBots, async (req, res) => {
     if (getCurrentSession(db, req.header("cookie"))) {
       res.redirect("/account");
       return;
@@ -447,6 +467,8 @@ export function createAuthRouter(deps: Dependencies): Router {
   router.post("/password-reset", passwordResetRateLimiter, passwordResetAccountRateLimiter, (req, res) => {
     const email = normalizeEmail(String(req.body.email ?? ""));
     const user = findUserByEmail(db, email);
+
+    recordPasswordResetRequest(req, res.locals.requestId, user?.id ?? null);
 
     if (!user) {
       logAuthenticationEvent(req, res, "password_reset_request", {
