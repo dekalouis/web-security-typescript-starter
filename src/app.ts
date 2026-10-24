@@ -22,6 +22,7 @@ import { createProductsRouter } from "./routes/products.ts";
 import { createStorefrontRouter } from "./routes/storefront.ts";
 import { createSupportRouter } from "./routes/support.ts";
 import { migrateSensitiveDataAtRest } from "./storage/migrations.ts";
+import { createRateLimiter } from "./security/rateLimit.ts";
 
 export function createApp(deps: Dependencies): express.Express {
   migrateSensitiveDataAtRest(deps.db, deps.keyring);
@@ -55,6 +56,14 @@ export function createApp(deps: Dependencies): express.Express {
   app.get("/health", (_req, res) => {
     res.json({ ok: true, app: "bearly-secure" });
   });
+
+  app.use(
+    createRateLimiter({
+      windowSeconds: 60,
+      max: 100,
+    }),
+  );
+
   app.use(["/shipping-widget.css", "/shipping-widget.js"], (_req, res, next) => {
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     next();

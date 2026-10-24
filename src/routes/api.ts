@@ -11,6 +11,7 @@ import {
 } from "../orders/index.ts";
 import { listProducts, type Product } from "../products.ts";
 import { findApiKey } from "../auth/apiKeys.ts";
+import { createRateLimiter } from "../security/rateLimit.ts";
 // import { it } from "node:test";
 
 type ProductResponse = {
@@ -63,9 +64,15 @@ function toOrderItemResponse(item: OrderItem): OrderItemResponse {
   };
 }
 
+
 export function createApiRouter(deps: Dependencies): Router {
   const { db } = deps;
   const router = Router();
+
+  const productRateLimiter = createRateLimiter({
+    windowSeconds: 60,
+    max: 30,
+  });
 
   router.get("/api/account/orders", (req, res) => {
     const current = getCurrentSession(db, req.header("cookie"));
@@ -101,7 +108,7 @@ export function createApiRouter(deps: Dependencies): Router {
     res.json({ order: toOrderResponse(order), items });
   });
 
-  router.get("/api/products", (_req, res) => {
+  router.get("/api/products", productRateLimiter, (_req, res) => {
     const products = listProducts(db).map(toProductResponse);
     res.json({ products });
   });

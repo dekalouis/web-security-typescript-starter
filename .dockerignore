@@ -11,4 +11,3 @@ data/uploads/*
 !package.json
 !package-lock.json
 !src/public/
-!data/uploads/mystery-shack-tax-exemption.pdf 

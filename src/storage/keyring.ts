@@ -1,3 +1,5 @@
+import { decrypt, encrypt } from "./encryption.ts";
+
 const ACTIVE_VERSION_ENV = "DATA_ENCRYPTION_ACTIVE_VERSION";
 const KEY_ENV_PREFIX = "DATA_ENCRYPTION_KEY_";
 const KEY_HEX_PATTERN = /^[0-9a-f]{64}$/i;
@@ -78,16 +80,21 @@ export function requireKeyring(keyring: Keyring | undefined): Keyring {
 
 export function encryptStringWithKeyring(
   value: string,
-  _keyring: Keyring | undefined,
+  keyring: Keyring | undefined,
 ): string {
-  return value;
+  const plaintext = Buffer.from(value, "utf8");
+  const payload = encryptWithKeyring(plaintext, keyring);
+  return serializeEncryptedPayload(payload).toString("utf8");
 }
 
 export function decryptStringWithKeyring(
   value: string,
-  _keyring: Keyring | undefined,
+  keyring: Keyring | undefined,
 ): string {
-  return value;
+  const serialized = Buffer.from(value, "utf8");
+  const payload = deserializeEncryptedPayload(serialized);
+  const plaintext = decryptWithKeyring(payload, keyring);
+  return plaintext.toString("utf8");
 }
 
 export function serializeEncryptedPayload(
@@ -159,3 +166,42 @@ function decodeBase64(value: string): Buffer {
 
   return decoded;
 }
+
+export function encryptWithKeyring(
+  plaintext: Buffer,
+  keyring: Keyring | undefined
+): VersionedEncryptedPayload {
+  const reqKeyring = requireKeyring(keyring);
+
+  const key = reqKeyring.keys.get(reqKeyring.activeVersion);
+  if (!key) {
+    throw new Error(
+      `No encryption key configured for active version: ${reqKeyring.activeVersion}`,
+    );
+  }
+
+  const encrypted = encrypt(plaintext, key);
+
+  return {
+    keyVersion: reqKeyring.activeVersion,
+    ...encrypted,
+  };
+}
+
+export function decryptWithKeyring(
+  payload: VersionedEncryptedPayload,
+  keyring: Keyring | undefined,
+): Buffer {
+  const reqKeyring = requireKeyring(keyring);
+
+  const key = reqKeyring.keys.get(payload.keyVersion);
+  if (!key) {
+    throw new Error(
+      `No ecryption key configured for version: ${payload.keyVersion}`,
+    );
+  }
+
+  return decrypt(payload, key);
+}
+
+

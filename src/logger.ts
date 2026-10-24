@@ -8,6 +8,13 @@ const REDACTED_KEYS = new Set([
   "secret",
   "adminNotes",
   "storagePath",
+  "email",
+  "shippingName",
+  "shippingAddress",
+  "shippingCity",
+  "shippingRegion",
+  "shippingPostalCode",
+  "originalName",
 ])
 
 type LogFields = Record<string, unknown>;

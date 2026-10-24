@@ -5,10 +5,16 @@ import { logEvent } from "../logger.ts";
 import { approvePawPalOrder } from "../orders/index.ts";
 
 export function createPawPalRouter(deps: Dependencies): Router {
+  const { db, pawPalApiKey } = deps;
   const router = Router();
 
   router.post("/integrations/pawpal/webhook", (req, res) => {
-    const verification = verifyPawPalWebhook(req.body);
+    const verification = verifyPawPalWebhook(
+      req.header("X-PawPal-Key"),
+      pawPalApiKey,
+      req.body
+    );
+
     if (verification.outcome === "unauthorized") {
       res.sendStatus(401);
       return;
@@ -19,7 +25,7 @@ export function createPawPalRouter(deps: Dependencies): Router {
       return;
     }
 
-    if (!approvePawPalOrder(deps.db, verification.orderId)) {
+    if (!approvePawPalOrder(db, verification.orderId)) {
       res.sendStatus(404);
       return;
     }
